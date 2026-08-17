@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📐 面積金頭腦小遊戲</title>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', 'Microsoft JhengHei', sans-serif;
+            background-color: #f0f8ff;
+            color: #333;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        #game-container {
+            background-color: #fff;
+            max-width: 600px;
+            margin: 0 auto;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #ff6b6b;
+            font-size: 32px;
+        }
+        .setup-section {
+            text-align: left;
+            background-color: #fff9c4;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+        .checkbox-group label {
+            display: inline-block;
+            margin: 10px 15px 10px 0;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background-color: #e0f7fa;
+            border-radius: 8px;
+            border: 2px solid #b2ebf2;
+        }
+        .checkbox-group input {
+            transform: scale(1.5);
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        button {
+            background-color: #4ecdc4;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: 0.2s;
+        }
+        button:hover {
+            background-color: #45b7d1;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(2px);
+        }
+        #play-area {
+            display: none;
+        }
+        #question-box {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+            background-color: #e8f8f5;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border: 3px dashed #1abc9c;
+        }
+        #answer-input {
+            font-size: 24px;
+            padding: 10px;
+            width: 150px;
+            text-align: center;
+            border: 3px solid #bdc3c7;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        #score-board {
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #8e44ad;
+        }
+        #feedback {
+            font-size: 22px;
+            font-weight: bold;
+            height: 30px;
+            margin-bottom: 20px;
+        }
+        .correct { color: #2ecc71; }
+        .wrong { color: #e74c3c; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <h1>📐 面積金頭腦</h1>
+
+    <!-- 設定區域 -->
+    <div id="setup-area" class="setup-section">
+        <h3>請勾選想要練習的形狀 (可複選)：</h3>
+        <div class="checkbox-group" id="shape-checkboxes">
+            <label><input type="checkbox" value="square" checked> 正方形</label>
+            <label><input type="checkbox" value="rectangle" checked> 長方形</label>
+            <label><input type="checkbox" value="triangle"> 三角形</label>
+            <label><input type="checkbox" value="parallelogram"> 平行四邊形</label>
+            <label><input type="checkbox" value="trapezoid"> 梯形</label>
+            <label><input type="checkbox" value="circle"> 圓形(含3.14)</label>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="startGame()">🚀 開始挑戰</button>
+        </div>
+    </div>
+
+    <!-- 遊戲區域 -->
+    <div id="play-area">
+        <div id="score-board">
+            <span>🏆 得分: <span id="score">0</span></span>
+            <span>🔥 連擊: <span id="combo">0</span></span>
+        </div>
+        
+        <div id="question-box">這裡是題目</div>
+        
+        <input type="number" id="answer-input" placeholder="輸入面積" step="0.01" onkeypress="handleEnter(event)">
+        <br>
+        <button onclick="checkAnswer()">📝 送出答案</button>
+        <button onclick="endGame()" style="background-color: #ff9f43; margin-left: 10px;">🛑 結束練習</button>
+
+        <div id="feedback"></div>
+    </div>
+</div>
+
+<script>
+    let score = 0;
+    let combo = 0;
+    let currentAnswer = 0;
+    let selectedShapes = [];
+
+    // 定義題庫與產生器
+    const shapeGenerators = {
+        square: {
+            name: '正方形',
+            generate: () => {
+                let a = Math.floor(Math.random() * 15) + 2;
+                return { q: `邊長為 ${a} 公分的正方形，<br>面積是多少平方公分？`, a: a * a };
+            }
+        },
+        rectangle: {
+            name: '長方形',
+            generate: () => {
+                let l = Math.floor(Math.random() * 15) + 2;
+                let w = Math.floor(Math.random() * 15) + 2;
+                return { q: `長 ${l} 公分、寬 ${w} 公分的長方形，<br>面積是多少平方公分？`, a: l * w };
+            }
+        },
+        triangle: {
+            name: '三角形',
+            generate: () => {
+                let b = Math.floor(Math.random() * 15) + 2;
+                let h = Math.floor(Math.random() * 10) * 2 + 2; // 確保高是偶數，好計算
+                return { q: `底為 ${b} 公分、高為 ${h} 公分的三角形，<br>面積是多少平方公分？`, a: (b * h) / 2 };
+            }
+        },
+        parallelogram: {
+            name: '平行四邊形',
+            generate: () => {
+                let b = Math.floor(Math.random() * 15) + 2;
+                let h = Math.floor(Math.random() * 15) + 2;
+                return { q: `底為 ${b} 公分、高為 ${h} 公分的平行四邊形，<br>面積是多少平方公分？`, a: b * h };
+            }
+        },
+        trapezoid: {
+            name: '梯形',
+            generate: () => {
+                let top = Math.floor(Math.random() * 10) + 2;
+                let bottom = Math.floor(Math.random() * 10) + 2;
+                let h = Math.floor(Math.random() * 10) * 2 + 2; // 確保高是偶數
+                return { q: `上底 ${top} 公分、下底 ${bottom} 公分、<br>高為 ${h} 公分的梯形，面積是多少平方公分？`, a: ((top + bottom) * h) / 2 };
+            }
+        },
+        circle: {
+            name: '圓形',
+            generate: () => {
+                let r = (Math.floor(Math.random() * 5) + 1) * 2; // 半徑為2,4,6,8,10
+                let ans = Math.round(r * r * 3.14 * 100) / 100;
+                return { q: `半徑為 ${r} 公分的圓形，<br>面積是多少平方公分？ (圓周率以 3.14 計算)`, a: ans };
+            }
+        }
+    };
+
+    function startGame() {
+        // 獲取勾選的形狀
+        selectedShapes = [];
+        const checkboxes = document.querySelectorAll('#shape-checkboxes input[type="checkbox"]:checked');
+        checkboxes.forEach((cb) => {
+            selectedShapes.push(cb.value);
+        });
+
+        if (selectedShapes.length === 0) {
+            alert("⚠️ 請至少勾選一種形狀才能開始喔！");
+            return;
+        }
+
+        // 初始化分數與介面切換
+        score = 0;
+        combo = 0;
+        updateScoreBoard();
+        document.getElementById("feedback").innerHTML = "";
+        
+        document.getElementById("setup-area").style.display = "none";
+        document.getElementById("play-area").style.display = "block";
+
+        nextQuestion();
+    }
+
+    function nextQuestion() {
+        // 隨機抽選一個被勾選的形狀題型
+        const randomType = selectedShapes[Math.floor(Math.random() * selectedShapes.length)];
+        const questionData = shapeGenerators[randomType].generate();
+        
+        currentAnswer = questionData.a;
+        document.getElementById("question-box").innerHTML = questionData.q;
+        
+        // 清空輸入框並自動對焦
+        const inputField = document.getElementById("answer-input");
+        inputField.value = "";
+        inputField.focus();
+    }
+
+    function checkAnswer() {
+        const userAnswer = parseFloat(document.getElementById("answer-input").value);
+        const feedbackEl = document.getElementById("feedback");
+
+        if (isNaN(userAnswer)) {
+            feedbackEl.innerHTML = "<span class='wrong'>⚠️ 請輸入數字喔！</span>";
+            return;
+        }
+
+        if (userAnswer === currentAnswer) {
+            score += 10 + (combo * 2); // 連擊可以加額外分數
+            combo += 1;
+            feedbackEl.innerHTML = `<span class='correct'>🎉 答對了！太棒了！</span>`;
+            updateScoreBoard();
+            setTimeout(nextQuestion, 1000); // 1秒後自動出下一題
+        } else {
+            combo = 0;
+            feedbackEl.innerHTML = `<span class='wrong'>❌ 答錯了，正確答案是 ${currentAnswer}。<br>再試試下一題！</span>`;
+            updateScoreBoard();
+            setTimeout(nextQuestion, 2500); // 2.5秒後出下一題(讓學生看清楚正確答案)
+        }
+    }
+
+    function handleEnter(e) {
+        if (e.key === 'Enter') {
+            checkAnswer();
+        }
+    }
+
+    function updateScoreBoard() {
+        document.getElementById("score").innerText = score;
+        document.getElementById("combo").innerText = combo;
+    }
+
+    function endGame() {
+        alert(`遊戲結束！\n你總共得到了 ${score} 分 🏆\n繼續保持，數學會越來越棒喔！`);
+        document.getElementById("setup-area").style.display = "block";
+        document.getElementById("play-area").style.display = "none";
+    }
+</script>
+
+</body>
+</html>
+
