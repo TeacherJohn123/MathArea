@@ -70,10 +70,10 @@
         button:active {
             transform: translateY(2px);
         }
-        #play-area {
+        #play-area, #review-area {
             display: none;
         }
-        #question-box {
+        .question-box {
             font-size: 24px;
             font-weight: bold;
             color: #2c3e50;
@@ -88,7 +88,7 @@
         #calc-input-area {
             margin-bottom: 20px;
         }
-        #answer-input {
+        input[type="number"] {
             font-size: 24px;
             padding: 10px;
             width: 150px;
@@ -101,7 +101,6 @@
         /* 選擇題區域樣式 */
         #mc-options-area {
             display: none;
-            display: flex;
             flex-direction: column;
             gap: 10px;
             margin-bottom: 20px;
@@ -124,7 +123,7 @@
             margin-bottom: 20px;
             color: #8e44ad;
         }
-        #feedback {
+        .feedback {
             font-size: 22px;
             font-weight: bold;
             height: 30px;
@@ -133,6 +132,26 @@
         }
         .correct { color: #2ecc71; }
         .wrong { color: #e74c3c; }
+
+        /* 複習區樣式 */
+        .review-section {
+            background-color: #fdfefe;
+            border: 2px solid #f1c40f;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .review-section h3 {
+            color: #e67e22;
+            margin-top: 0;
+        }
+        .hint-text {
+            color: #d35400;
+            font-weight: bold;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -144,7 +163,6 @@
     <div id="setup-area" class="setup-section">
         <h3>請勾選想要練習的題型 (可複選)：</h3>
         <div class="checkbox-group" id="shape-checkboxes">
-            <!-- 新增公式選擇區 -->
             <label class="highlight-label"><input type="checkbox" value="formula" checked> 🧠 面積公式記憶</label>
             <hr style="border: 1px dashed #ccc; margin: 10px 0;">
             <label><input type="checkbox" value="square" checked> 正方形</label>
@@ -166,7 +184,7 @@
             <span>🔥 連擊: <span id="combo">0</span></span>
         </div>
         
-        <div id="question-box">這裡是題目</div>
+        <div id="question-box" class="question-box">這裡是題目</div>
         
         <!-- 計算題輸入區 -->
         <div id="calc-input-area">
@@ -176,96 +194,108 @@
         </div>
 
         <!-- 公式選擇題區 -->
-        <div id="mc-options-area">
-            <!-- 按鈕會由 JavaScript 動態產生 -->
-        </div>
+        <div id="mc-options-area"></div>
         
-        <div id="feedback"></div>
+        <div id="feedback" class="feedback"></div>
 
         <button onclick="endGame()" style="background-color: #ff9f43; margin-top: 10px;">🛑 結束練習</button>
+    </div>
+
+    <!-- 訂正與複習區域 -->
+    <div id="review-area">
+        <h2 style="color: #2980b9;">📝 課後複習時間</h2>
+        <div id="review-content"></div>
     </div>
 </div>
 
 <script>
     let score = 0;
     let combo = 0;
-    let currentAnswer = null;
-    let currentQuestionType = 'calc'; // 'calc' 或 'mc'
+    let currentQuestionData = null;
     let selectedShapes = [];
-    let isWaitingForNext = false; // 防止狂按按鈕
+    let isWaitingForNext = false;
 
-    // 題庫與產生器
+    // 錯題紀錄系統
+    let wrongFormulas = new Set(); // 記錄答錯公式的形狀名稱
+    let wrongCalculations = [];    // 記錄算錯的題目資料
+    let retryIndex = 0;            // 記錄目前訂正到哪一題
+
+    // 定義所有正確的公式對照表，用來做複習與提示
+    const formulasDict = {
+        '正方形': '邊長 × 邊長',
+        '長方形': '長 × 寬',
+        '三角形': '底 × 高 ÷ 2',
+        '平行四邊形': '底 × 高',
+        '梯形': '(上底 + 下底) × 高 ÷ 2',
+        '圓形': '半徑 × 半徑 × 3.14'
+    };
+
+    // 題庫與產生器 (特別加入 shape 屬性，用來抓對應的公式)
     const shapeGenerators = {
         formula: {
-            name: '公式',
             generate: () => {
-                const formulas = [
-                    { shape: '正方形', correct: '邊長 × 邊長', wrongs: ['邊長 × 4', '長 × 寬', '底 × 高'] },
-                    { shape: '長方形', correct: '長 × 寬', wrongs: ['(長 + 寬) × 2', '底 × 高', '邊長 × 邊長'] },
-                    { shape: '三角形', correct: '底 × 高 ÷ 2', wrongs: ['底 × 高', '(上底+下底) × 高 ÷ 2', '邊長 × 邊長'] },
-                    { shape: '平行四邊形', correct: '底 × 高', wrongs: ['底 × 高 ÷ 2', '長 × 寬', '(上底+下底) × 高 ÷ 2'] },
-                    { shape: '梯形', correct: '(上底 + 下底) × 高 ÷ 2', wrongs: ['(上底 + 下底) × 高', '底 × 高 ÷ 2', '長 × 寬'] },
-                    { shape: '圓形', correct: '半徑 × 半徑 × 3.14', wrongs: ['直徑 × 3.14', '半徑 × 2 × 3.14', '底 × 高'] }
-                ];
-                let item = formulas[Math.floor(Math.random() * formulas.length)];
-                let options = [item.correct, ...item.wrongs];
-                // 將選項隨機打亂
-                options.sort(() => Math.random() - 0.5);
+                const shapes = Object.keys(formulasDict);
+                const itemShape = shapes[Math.floor(Math.random() * shapes.length)];
+                const correctFormula = formulasDict[itemShape];
+                
+                // 產生錯誤選項的邏輯
+                const allFormulas = Object.values(formulasDict);
+                let wrongs = allFormulas.filter(f => f !== correctFormula);
+                // 隨機選三個錯誤公式來混淆
+                wrongs = wrongs.sort(() => 0.5 - Math.random()).slice(0, 3);
+                
+                let options = [correctFormula, ...wrongs];
+                options.sort(() => Math.random() - 0.5); // 選項洗牌
                 
                 return { 
                     type: 'mc', 
-                    q: `請問「<span style="color:#e74c3c">${item.shape}</span>」的面積公式是哪一個？`, 
-                    a: item.correct,
+                    shape: itemShape,
+                    q: `請問「<span style="color:#e74c3c">${itemShape}</span>」的面積公式是哪一個？`, 
+                    a: correctFormula,
                     options: options 
                 };
             }
         },
         square: {
-            name: '正方形',
             generate: () => {
                 let a = Math.floor(Math.random() * 15) + 2;
-                return { type: 'calc', q: `邊長為 ${a} 公分的正方形，<br>面積是多少平方公分？`, a: a * a };
+                return { type: 'calc', shape: '正方形', q: `邊長為 ${a} 公分的正方形，<br>面積是多少平方公分？`, a: a * a };
             }
         },
         rectangle: {
-            name: '長方形',
             generate: () => {
                 let l = Math.floor(Math.random() * 15) + 2;
                 let w = Math.floor(Math.random() * 15) + 2;
-                return { type: 'calc', q: `長 ${l} 公分、寬 ${w} 公分的長方形，<br>面積是多少平方公分？`, a: l * w };
+                return { type: 'calc', shape: '長方形', q: `長 ${l} 公分、寬 ${w} 公分的長方形，<br>面積是多少平方公分？`, a: l * w };
             }
         },
         triangle: {
-            name: '三角形',
             generate: () => {
                 let b = Math.floor(Math.random() * 15) + 2;
                 let h = Math.floor(Math.random() * 10) * 2 + 2;
-                return { type: 'calc', q: `底為 ${b} 公分、高為 ${h} 公分的三角形，<br>面積是多少平方公分？`, a: (b * h) / 2 };
+                return { type: 'calc', shape: '三角形', q: `底為 ${b} 公分、高為 ${h} 公分的三角形，<br>面積是多少平方公分？`, a: (b * h) / 2 };
             }
         },
         parallelogram: {
-            name: '平行四邊形',
             generate: () => {
                 let b = Math.floor(Math.random() * 15) + 2;
                 let h = Math.floor(Math.random() * 15) + 2;
-                return { type: 'calc', q: `底為 ${b} 公分、高為 ${h} 公分的平行四邊形，<br>面積是多少平方公分？`, a: b * h };
+                return { type: 'calc', shape: '平行四邊形', q: `底為 ${b} 公分、高為 ${h} 公分的平行四邊形，<br>面積是多少平方公分？`, a: b * h };
             }
         },
         trapezoid: {
-            name: '梯形',
             generate: () => {
                 let top = Math.floor(Math.random() * 10) + 2;
                 let bottom = Math.floor(Math.random() * 10) + 2;
                 let h = Math.floor(Math.random() * 10) * 2 + 2;
-                return { type: 'calc', q: `上底 ${top} 公分、下底 ${bottom} 公分、<br>高為 ${h} 公分的梯形，<br>面積是多少平方公分？`, a: ((top + bottom) * h) / 2 };
+                return { type: 'calc', shape: '梯形', q: `上底 ${top} 公分、下底 ${bottom} 公分、<br>高為 ${h} 公分的梯形，<br>面積是多少平方公分？`, a: ((top + bottom) * h) / 2 };
             }
         },
         circle: {
-            name: '圓形',
             generate: () => {
                 let r = (Math.floor(Math.random() * 5) + 1) * 2; 
                 let ans = Math.round(r * r * 3.14 * 100) / 100;
-                return { type: 'calc', q: `半徑為 ${r} 公分的圓形，<br>面積是多少平方公分？ (圓周率以 3.14 計算)`, a: ans };
+                return { type: 'calc', shape: '圓形', q: `半徑為 ${r} 公分的圓形，<br>面積是多少平方公分？ (圓周率以 3.14 計算)`, a: ans };
             }
         }
     };
@@ -273,23 +303,26 @@
     function startGame() {
         selectedShapes = [];
         const checkboxes = document.querySelectorAll('#shape-checkboxes input[type="checkbox"]:checked');
-        checkboxes.forEach((cb) => {
-            selectedShapes.push(cb.value);
-        });
+        checkboxes.forEach((cb) => { selectedShapes.push(cb.value); });
 
         if (selectedShapes.length === 0) {
             alert("⚠️ 請至少勾選一種題型才能開始喔！");
             return;
         }
 
+        // 重置狀態
         score = 0;
         combo = 0;
+        wrongFormulas.clear();
+        wrongCalculations = [];
         isWaitingForNext = false;
+        
         updateScoreBoard();
         document.getElementById("feedback").innerHTML = "";
         
         document.getElementById("setup-area").style.display = "none";
         document.getElementById("play-area").style.display = "block";
+        document.getElementById("review-area").style.display = "none";
 
         nextQuestion();
     }
@@ -298,32 +331,27 @@
         isWaitingForNext = false;
         document.getElementById("feedback").innerHTML = "";
 
-        // 隨機抽選題型
         const randomType = selectedShapes[Math.floor(Math.random() * selectedShapes.length)];
-        const questionData = shapeGenerators[randomType].generate();
+        currentQuestionData = shapeGenerators[randomType].generate();
         
-        currentAnswer = questionData.a;
-        currentQuestionType = questionData.type;
-        document.getElementById("question-box").innerHTML = questionData.q;
+        document.getElementById("question-box").innerHTML = currentQuestionData.q;
 
         const calcArea = document.getElementById("calc-input-area");
         const mcArea = document.getElementById("mc-options-area");
 
-        if (questionData.type === 'mc') {
-            // 顯示選擇題介面
+        if (currentQuestionData.type === 'mc') {
             calcArea.style.display = "none";
             mcArea.style.display = "flex";
-            mcArea.innerHTML = ""; // 清空舊按鈕
+            mcArea.innerHTML = ""; 
             
-            questionData.options.forEach(opt => {
+            currentQuestionData.options.forEach(opt => {
                 let btn = document.createElement("button");
                 btn.className = "mc-btn";
                 btn.innerText = opt;
-                btn.onclick = () => processAnswer(opt === currentAnswer);
+                btn.onclick = () => processAnswer(opt === currentQuestionData.a);
                 mcArea.appendChild(btn);
             });
         } else {
-            // 顯示計算題介面
             mcArea.style.display = "none";
             calcArea.style.display = "block";
             
@@ -333,22 +361,20 @@
         }
     }
 
-    // 計算題按鈕送出
     function checkCalcAnswer() {
-        if (isWaitingForNext || currentQuestionType !== 'calc') return;
+        if (isWaitingForNext || currentQuestionData.type !== 'calc') return;
         
         const userAnswer = parseFloat(document.getElementById("answer-input").value);
         if (isNaN(userAnswer)) {
             document.getElementById("feedback").innerHTML = "<span class='wrong'>⚠️ 請輸入數字喔！</span>";
             return;
         }
-        processAnswer(userAnswer === currentAnswer);
+        processAnswer(userAnswer === currentQuestionData.a);
     }
 
-    // 處理答案對錯的共用邏輯
     function processAnswer(isCorrect) {
         if (isWaitingForNext) return;
-        isWaitingForNext = true; // 鎖定直到下一題出現
+        isWaitingForNext = true; 
 
         const feedbackEl = document.getElementById("feedback");
 
@@ -360,15 +386,22 @@
             setTimeout(nextQuestion, 1000); 
         } else {
             combo = 0;
-            feedbackEl.innerHTML = `<span class='wrong'>❌ 答錯了，正確答案是：<br><strong>${currentAnswer}</strong></span>`;
+            // 紀錄錯誤
+            if (currentQuestionData.type === 'mc') {
+                wrongFormulas.add(currentQuestionData.shape);
+            } else {
+                // 如果是計算題，將題目存起來以便之後訂正
+                wrongCalculations.push(currentQuestionData);
+            }
+            
+            feedbackEl.innerHTML = `<span class='wrong'>❌ 答錯了，正確答案是：<br><strong>${currentQuestionData.a}</strong></span>`;
             updateScoreBoard();
-            setTimeout(nextQuestion, 2500); // 答錯停留久一點讓學生看答案
+            setTimeout(nextQuestion, 2500); 
         }
     }
 
-    // 計算題 Enter 鍵支援
     function handleEnter(e) {
-        if (e.key === 'Enter' && currentQuestionType === 'calc') {
+        if (e.key === 'Enter' && currentQuestionData.type === 'calc') {
             checkCalcAnswer();
         }
     }
@@ -378,10 +411,118 @@
         document.getElementById("combo").innerText = combo;
     }
 
+    // ========== 結束與複習系統 ==========
     function endGame() {
-        alert(`遊戲結束！\n你總共得到了 ${score} 分 🏆\n繼續保持，數學會越來越棒喔！`);
-        document.getElementById("setup-area").style.display = "block";
         document.getElementById("play-area").style.display = "none";
+
+        // 如果完全沒有錯題，直接恭喜結束
+        if (wrongFormulas.size === 0 && wrongCalculations.length === 0) {
+            finishFinalGame("太強了！你沒有任何錯題，完全是面積大師！🎉");
+            return;
+        }
+
+        // 啟動複習區
+        startReview();
+    }
+
+    function startReview() {
+        document.getElementById("review-area").style.display = "block";
+        let reviewHtml = "";
+
+        // 1. 公式複習區
+        if (wrongFormulas.size > 0) {
+            reviewHtml += `<div class="review-section">
+                <h3>⚠️ 這些公式你忘了，再看一次把它記熟：</h3>
+                <ul style="font-size: 18px; line-height: 1.8;">`;
+            wrongFormulas.forEach(shape => {
+                reviewHtml += `<li><strong>${shape}</strong>：${formulasDict[shape]}</li>`;
+            });
+            reviewHtml += `</ul></div>`;
+        }
+
+        // 2. 計算錯題再挑戰區塊設定
+        if (wrongCalculations.length > 0) {
+            reviewHtml += `
+                <div class="review-section" id="retry-section">
+                    <h3>🔄 剛剛算錯的題目，有了公式提示，再挑戰一次吧！</h3>
+                    <div id="retry-question-box" class="question-box"></div>
+                    <div id="retry-hint" class="hint-text"></div>
+                    <div style="text-align: center;">
+                        <input type="number" id="retry-answer-input" placeholder="重新計算面積" step="0.01" onkeypress="handleRetryEnter(event)">
+                        <br>
+                        <button onclick="checkRetryAnswer()">📝 送出答案</button>
+                        <div id="retry-feedback" class="feedback"></div>
+                    </div>
+                </div>`;
+        } else {
+            // 如果只有公式錯，沒有計算錯，放一個結束按鈕
+            reviewHtml += `<div style="text-align: center; margin-top: 20px;">
+                <button onclick="finishFinalGame('公式要記得多背幾次喔！加油！')">🌟 完成複習，回首頁</button>
+            </div>`;
+        }
+
+        document.getElementById("review-content").innerHTML = reviewHtml;
+
+        if (wrongCalculations.length > 0) {
+            retryIndex = 0;
+            showNextRetryQuestion();
+        }
+    }
+
+    function showNextRetryQuestion() {
+        if (retryIndex >= wrongCalculations.length) {
+            // 訂正完畢
+            document.getElementById("retry-section").innerHTML = `
+                <h3 style="text-align:center; color:#2ecc71;">🎉 太棒了！所有錯題都訂正完成了！</h3>
+                <div style="text-align:center; margin-top: 20px;">
+                    <button onclick="finishFinalGame('經過訂正，你的數學變得更厲害了！🌟')">🌟 完成複習，回首頁</button>
+                </div>`;
+            return;
+        }
+
+        let qData = wrongCalculations[retryIndex];
+        document.getElementById("retry-question-box").innerHTML = qData.q;
+        // 給予對應圖形的公式提示
+        document.getElementById("retry-hint").innerHTML = `💡 提示公式：${qData.shape} = ${formulasDict[qData.shape]}`;
+        
+        const retryInput = document.getElementById("retry-answer-input");
+        retryInput.value = "";
+        document.getElementById("retry-feedback").innerHTML = "";
+        retryInput.focus();
+    }
+
+    function checkRetryAnswer() {
+        let qData = wrongCalculations[retryIndex];
+        let retryAns = parseFloat(document.getElementById("retry-answer-input").value);
+        let feedback = document.getElementById("retry-feedback");
+
+        if (isNaN(retryAns)) {
+            feedback.innerHTML = "<span class='wrong'>⚠️ 請輸入數字喔！</span>";
+            return;
+        }
+
+        if (retryAns === qData.a) {
+            feedback.innerHTML = "<span class='correct'>🎉 算對了！你學會了！</span>";
+            setTimeout(() => {
+                retryIndex++;
+                showNextRetryQuestion();
+            }, 1200);
+        } else {
+            // 訂正又錯了，不跳下一題，鼓勵他再試一次
+            feedback.innerHTML = `<span class='wrong'>❌ 還是不太對喔，看看上面的提示公式再算一次！</span>`;
+        }
+    }
+
+    function handleRetryEnter(e) {
+        if (e.key === 'Enter') {
+            checkRetryAnswer();
+        }
+    }
+
+    function finishFinalGame(message) {
+        alert(`遊戲結束！🏆\n你總共得到了 ${score} 分\n\n${message}`);
+        document.getElementById("review-area").style.display = "none";
+        document.getElementById("setup-area").style.display = "block";
     }
 </script>
 
